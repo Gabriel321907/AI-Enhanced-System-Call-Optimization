@@ -139,4 +139,4 @@ with open(recommendations_path, "w") as f:
 
 print(f"\nSaved optimization recommendations: {recommendations_path}")
 
-print("\n✔ ALL TASKS COMPLETED SUCCESSFULLY ✔")
+print("\n ALL TASKS COMPLETED SUCCESSFULLY ")
