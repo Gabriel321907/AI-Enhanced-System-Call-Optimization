@@ -2,78 +2,61 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
 
 #define CALLS 200
+#define CSV_FILE "syscall_data.csv"
 
 long get_time_ns() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_nsec + ts.tv_sec * 1000000000L;
+    return ts.tv_sec * 1000000000L + ts.tv_nsec;
 }
 
-// Simple AI heuristic: predict frequent calls
-int predict_next(int freq_read, int freq_write, int freq_stat) {
-    if (freq_read > freq_write && freq_read > freq_stat) return 0;
-    if (freq_write > freq_read && freq_write > freq_stat) return 1;
-    return 2;
+const char* syscall_name(int type) {
+    switch (type) {
+        case 0: return "read";
+        case 1: return "write";
+        case 2: return "stat";
+        default: return "unknown";
+    }
 }
 
 int main() {
+    FILE *csv;
     int i;
-    long baseline_total = 0, optimized_total = 0;
+    pid_t pid = getpid();
 
-    int freq_read = 0, freq_write = 0, freq_stat = 0;
+    csv = fopen(CSV_FILE, "w");
+    if (!csv) {
+        perror("CSV file open failed");
+        return 1;
+    }
 
-    printf("Running System Call Simulator...\n");
+    
+    fprintf(csv, "timestamp,pid,syscall,exec_time\n");
 
-    // Baseline measurement
+    printf("Collecting system call data...\n");
+
     for (i = 0; i < CALLS; i++) {
-        int call_type = i % 3;  
+        int call_type = i % 3;
+        long start, end, exec_time;
+        long timestamp;
 
-        long start = get_time_ns();
+        timestamp = time(NULL); 
+        start = get_time_ns();
+
         if (call_type == 0) {
             int fd = open("sample.txt", O_RDONLY | O_CREAT, 0644);
-            char buffer[50];
-            read(fd, buffer, 50);
+            char buffer[64];
+            read(fd, buffer, sizeof(buffer));
             close(fd);
-            freq_read++;
         }
         else if (call_type == 1) {
-            int fd = open("output.txt", O_WRONLY | O_CREAT, 0644);
-            write(fd, "Hello OS", 8);
-            close(fd);
-            freq_write++;
-        }
-        else {
-            struct stat st;
-            stat("sample.txt", &st);
-            freq_stat++;
-        }
-
-        long end = get_time_ns();
-        baseline_total += (end - start);
-    }
-
-    printf("Baseline Completed.\n");
-
-    // AI-based Optimization
-    for (i = 0; i < CALLS; i++) {
-        int predict = predict_next(freq_read, freq_write, freq_stat);
-        long start = get_time_ns();
-
-        if (predict == 0) {
-            int fd = open("sample.txt", O_RDONLY);
-            char buffer[50];
-            read(fd, buffer, 50);
-            close(fd);
-        }
-        else if (predict == 1) {
-            int fd = open("output.txt", O_WRONLY | O_CREAT, 0644);
-            write(fd, "AI Optimized", 12);
+            int fd = open("output.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
+            write(fd, "Hello OS\n", 9);
             close(fd);
         }
         else {
@@ -81,15 +64,20 @@ int main() {
             stat("sample.txt", &st);
         }
 
-        long end = get_time_ns();
-        optimized_total += (end - start);
+        end = get_time_ns();
+        exec_time = (end - start) / 1000; 
+
+        fprintf(csv, "%ld,%d,%s,%ld\n",
+                timestamp,
+                pid,
+                syscall_name(call_type),
+                exec_time);
     }
 
-    printf("\n=== PERFORMANCE REPORT ===\n");
-    printf("Baseline Total Time     : %ld ns\n", baseline_total);
-    printf("Optimized Total Time    : %ld ns\n", optimized_total);
-    printf("Improvement             : %.2f%%\n",
-           ((baseline_total - optimized_total) * 100.0) / baseline_total);
+    fclose(csv);
+
+    printf("CSV data collection complete.\n");
+    printf("Output file: %s\n", CSV_FILE);
 
     return 0;
 }
